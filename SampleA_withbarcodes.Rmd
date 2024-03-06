@@ -1,0 +1,522 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+```{r}
+library(ggplot2)
+library(ggsci)
+library(hdf5r)
+library(patchwork)
+library(RColorBrewer)
+library(Seurat)
+library(tidyverse)
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, error = FALSE) 
+```
+
+
+```{r}
+setwd("/Users/christinacomo/OneDrive - The University of Colorado Denver/Spatial")
+getwd()
+```
+```{r}
+sample <- "control1"
+data_dir <- paste('/Users/christinacomo/OneDrive - The University of Colorado Denver/Spatial/data/control1/spatial', sample, sep = "")
+so <- Load10X_Spatial(data_dir,
+                      slice = sample)
+```
+
+
+```{r}
+list.files(data_dir) # Should show filtered_feature_bc_matrix.h5
+```
+
+
+```{r}
+SampleA <- Load10X_Spatial(
+  data_dir,
+  filename = "filtered_feature_bc_matrix.h5",
+  assay = "Spatial",
+  slice = "slice1",
+  filter.matrix = TRUE,
+  to.upper = FALSE,
+  image = NULL,
+)
+```
+
+```{r}
+sample <- "control1"
+SampleA[["orig.ident"]] <- sample
+SampleA <- SetIdent(SampleA, value = so@meta.data$orig.ident)
+```
+
+```{r}
+SampleA <- PercentageFeatureSet(SampleA, "^mt-", col.name = "percent_mito")
+SampleA <- PercentageFeatureSet(SampleA, "^Hb.*-", col.name = "percent_hb")
+```
+
+```{r, fig.height = 3, fig.width = 3}
+VlnPlot(SampleA, 
+        features = c("nCount_Spatial", 
+                     "nFeature_Spatial", 
+                     "percent_mito", 
+                     "percent_hb"),
+        pt.size = 0.1, 
+        ncol = 2) + NoLegend()
+```
+
+```{r}
+SpatialFeaturePlot(SampleA, 
+                   features = c("nCount_Spatial", 
+                                "nFeature_Spatial", 
+                                "percent_mito", 
+                                "percent_hb"))
+```
+
+```{r}
+SampleA <- SCTransform(SampleA, assay = "Spatial")
+```
+
+```{r}
+SampleA <- RunPCA(SampleA, assay = "SCT", verbose = FALSE)
+SampleA <- FindNeighbors(SampleA, reduction = "pca", dims = 1:30, verbose = FALSE)
+SampleA <- FindClusters(SampleA, verbose = FALSE)
+SampleA <- RunUMAP(SampleA, reduction = "pca", dims = 1:30)
+```
+
+```{r}
+p1 <- DimPlot(SampleA, reduction = "umap", label = TRUE)
+p2 <- SpatialDimPlot(SampleA, label = TRUE, label.size = 3)
+p1 + p2
+```
+
+```{r}
+saveRDS(SampleA, "/Users/christinacomo/Desktop/Spatial/RDS_files/SampleA_initial.RDS")
+```
+
+
+```{r}
+#Now subset with  spots 
+MGE <- read.csv("/Users/christinacomo/Desktop/Spatial/Raw Data/Control1MGE.csv")
+LGE <- read.csv("/Users/christinacomo/Desktop/Spatial/Raw Data/Control1LGE.csv")
+Midline <- read.csv("/Users/christinacomo/Desktop/Spatial/Raw Data/Control1Midline.csv")
+Dorsal_Cortex <- read.csv("/Users/christinacomo/Desktop/Spatial/Raw Data/Control1DorsalCortex.csv")
+Ventral_Cortex <- read.csv("/Users/christinacomo/Desktop/Spatial/Raw Data/Control1VentralCortex.csv")
+```
+
+```{r}
+# rename columns in cortex and meninges dataframes for merging
+names(MGE) <- c("barcodes", "region")
+names(LGE) <- c("barcodes", "region")
+names(Midline) <- c("barcodes", "region")
+names(Dorsal_Cortex) <- c("barcodes", "region")
+names(Ventral_Cortex) <- c("barcodes", "region")
+```
+
+```{r}
+# merge cortex and meninges dataframes together
+regions_of_interest <- rbind(MGE, LGE, Midline, Dorsal_Cortex, Ventral_Cortex) 
+```
+
+
+```{r}
+# grab the spot barcodes to use for subsetting
+spots.use <- regions_of_interest$barcodes
+regions_of_interest <- regions_of_interest %>% column_to_rownames(var = "barcodes")
+```
+
+```{r}
+# check dimensions of regions_of_interest and make sure it is the sum of cc_cortex and cc_meninges
+dim(regions_of_interest)
+```
+
+```{r}
+# now, subset the seurat object
+SampleA <- subset(SampleA, cells = spots.use)
+```
+
+```{r}
+subset_A <- AddMetaData(SampleA, metadata = regions_of_interest)
+p1 <- SpatialDimPlot(subset_A)
+p1
+```
+
+
+```{r}
+SpatialFeaturePlot(subset_A, 
+                   features = c("nCount_Spatial", 
+                                "nFeature_Spatial", 
+                                "percent_mito", 
+                                "percent_hb"))
+```
+
+```{r}
+saveRDS(subset_A, "/Users/christinacomo/OneDrive - The University of Colorado Denver/Spatial/RDS_files/SampleA_subsetwithbarcodes.RDS")
+```
+
+```{r}
+subset_A <- readRDS("/Users/christinacomo/OneDrive - The University of Colorado Denver/Spatial/RDS_files/SampleA_subsetwithbarcodes.RDS")
+subset_B <- readRDS("/Users/christinacomo/OneDrive - The University of Colorado Denver/Spatial/RDS_files/SampleB_subsetwithbarcodes.RDS")
+subset_C <- readRDS("/Users/christinacomo/OneDrive - The University of Colorado Denver/Spatial/RDS_files/SampleC_subsetwithbarcodes.RDS")
+subset_D <- readRDS("/Users/christinacomo/OneDrive - The University of Colorado Denver/Spatial/RDS_files/SampleD_subsetwithbarcodes.RDS")
+```
+
+```{r setup, include=FALSE, echo=FALSE}
+require("knitr")
+opts_knit$set(root.dir = "/Users/christinacomo/OneDrive - The University of Colorado Denver/Spatial")
+```
+
+
+```{r}
+setwd("/Users/christinacomo/OneDrive - The University of Colorado Denver/Spatial")
+getwd()
+```
+
+## 2.1 Prepare data
+
+```{r}
+sample_id <- c("control1", "control2", "mutant1", "mutant2")
+samples <- c()
+spotfiles <- c()
+imgs <- c()
+json <- c()
+for (sample in sample_id) {
+  samples <- c(samples, paste("raw_data/", sample, "/filtered_feature_bc_matrix.h5", sep = ""))
+  spotfiles <- c(spotfiles, paste("raw_data/", sample, "/spatial/tissue_positions_list.csv", sep = ""))
+  imgs <- c(imgs, paste("raw_data/", sample, "/spatial/tissue_hires_image.png", sep = ""))
+  json <- c(json, paste("raw_data/", sample, "/spatial/scalefactors_json.json", sep = ""))
+}
+infoTable <- data.frame(samples, spotfiles, imgs, json, sample_id)
+```
+
+
+```{r}
+so <- InputFromTable(infotable = infoTable,
+                      minUMICountsPerGene = 5,
+                      minUMICountsPerSpot = 300,
+                      platform =  "Visium")
+```
+
+```{r}
+# convert sample_id to factor and reorder levels for plotting
+so@meta.data$sample_id <- as.factor(so@meta.data$sample_id)
+so@meta.data$sample_id <- factor(so@meta.data$sample_id, levels = c("control1", "control2", "mutant1", "mutant2"))
+```
+
+# 3 Quality Control
+
+## 3.1 Mitochondrial content
+
+We can explore mitochondrial transcript content in our data by identifying all mitochondrial genes (i.e., genes that have a "mt-" prefix) and then calculating the percentage of mitochondrial content per spot. This information is added to the *meta.data* of our Seurat object.
+
+```{r}
+mt.genes <- grep(pattern = "^mt-", x = rownames(so), value = TRUE)
+so$percent.mt <- (Matrix::colSums(so@assays$RNA@counts[mt.genes, ])/Matrix::colSums(so@assays$RNA@counts))*100
+```
+
+Plot the percentage of mitochondrial content per spot per sample:
+
+```{r, fig.height = 3, fig.width = 3}
+ST.FeaturePlot(so, 
+               features = "percent.mt", 
+               palette = "Spectral",
+               pt.size = 1.0, 
+               ncol = 2, 
+               label.by = "sample_id") +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 18),
+        text = element_text(size = 16))
+```
+
+Same information as above, but represented as a violin plot:
+
+```{r}
+VlnPlot(so, 
+        features = "percent.mt",
+        group.by = "sample_id",
+        cols = custom_colors$discrete,
+        pt.size = 0.1) +
+  coord_flip() +
+  NoLegend() +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 18),
+        text = element_text(size = 16))
+```
+
+## 3.2 nFeature (number of genes)
+
+```{r, fig.height = 3, fig.width = 3}
+ST.FeaturePlot(so, 
+               features = "nFeature_RNA", 
+               palette = "Spectral",
+               pt.size = 1.0, 
+               ncol = 2, 
+               label.by = "sample_id") +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 18),
+        text = element_text(size = 16))
+```
+
+Same information as above, but represented as a violin plot:
+
+```{r}
+VlnPlot(so, 
+        features = "nFeature_RNA",
+        group.by = "sample_id",
+        cols = custom_colors$discrete,
+        pt.size = 0.1) +
+  coord_flip() +
+  NoLegend() +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 18),
+        text = element_text(size = 16))
+```
+## 3.3 nCount (total UMI count)
+
+When we created our Seurat object we filtered out spots that had less than 300 total transcripts. Here, we'll plot the number of transcripts (UMI counts) per capture-spot for each sample.
+
+```{r, fig.height = 3, fig.width = 3}
+ST.FeaturePlot(so, 
+               features = "nCount_RNA", 
+               palette = "Spectral",
+               pt.size = 1.0, 
+               ncol = 2, 
+               label.by = "sample_id") +
+  theme(plot.title = element_text(hjust = 0.5, size = 18),
+        text = element_text(size = 16))
+```
+
+Same information as above, but represented as a violin plot:
+
+```{r}
+VlnPlot(so, 
+        features = "nCount_RNA",
+        group.by = "sample_id",
+        cols = custom_colors$discrete,
+        pt.size = 0.1) +
+  coord_flip() +
+  NoLegend() +
+  theme(plot.title = element_text(hjust = 0.5, 
+                                  size = 18),
+        text = element_text(size = 16))
+```
+# 4 Image Processing
+
+## 4.1 Loading and handling images
+
+Now that the Seurat object is created and filtered, we can load the H&E images from the file paths provided in the *infoTable*. 
+
+```{r}
+so <- LoadImages(so, time.resolve = TRUE, verbose = TRUE)
+```
+
+Take a quick look at the raw (unprocessed) sections:
+
+```{r}
+ImagePlot(so, method = "raster", type = "raw")
+```
+
+## 4.2 Mask Images
+
+Let's mask the background of the H&E images so that we can rotate them (i.e., it is easier to look at the sections when the dorsal-ventral axis is oriented top-to-bottom versus right-to-left).
+
+```{r}
+so <- MaskImages(object = so)
+```
+
+Plot the masked images:
+
+```{r}
+ImagePlot(so, method = "raster", type = "masked")
+```
+## 4.3 Transform images
+
+Here we'll apply rigid transformations to our images so that they are in a dorsal-ventral orientation from top-to-bottom (versus right-to-left).
+
+```{r}
+transforms <- list("1" = list("angle" = 270),
+                   "2" = list("angle" = 270),
+                   "3" = list("angle" = 270),
+                   "4" = list("angle" = 270))
+so <- WarpImages(so, transforms)
+```
+
+Plot rotated images:
+
+```{r}
+ImagePlot(so, method = "raster", type = "processed")
+```
+```{r, fig.height = 3, fig.width = 3}
+FeatureOverlay(so, 
+               features = "Vim", 
+               sampleids = 1:4,
+               cols = c("lightgray", "mistyrose", "red", "dark red", "black"),
+               pt.size = 1.0, 
+               ncol = 2, 
+               label.by = "sample_id",
+               type = "raw")
+```
+
+
+```{r, fig.height = 3, fig.width = 3}
+FeatureOverlay(so, 
+               features = "Vim", 
+               sampleids = 1:4,
+               cols = c("lightgray", "mistyrose", "red", "dark red", "black"),
+               pt.size = 1.0, 
+               ncol = 2, 
+               label.by = "sample_id",
+               type = "processed")
+```
+
+# 5 Normalization
+
+The [spatial vignette](https://satijalab.org/seurat/articles/spatial_vignette.html) from Seurat recommends using sctransform to normalize ST data, so we will use sctransform to normalize our data. Note that `SCTransform()` replaces `NormalizeData()`, `ScaleData()`, and `FindVariableFeatures()`.
+
+```{r}
+so <- SCTransform(so)
+```
+## 6.1 Clustering
+
+We will use the SCT assay of our Seurat object for clustering.
+
+```{r}
+so <- RunPCA(so, assay = "SCT", verbose = FALSE)
+so <- FindNeighbors(so, reduction = "pca", dims = 1:50, verbose = FALSE)
+so <- FindClusters(so, verbose = FALSE)
+```
+
+### 6.1.1 Plot the clusters spatially
+
+Plot all clusters together spatially for each sample.
+
+```{r, fig.height = 3, fig.width = 3}
+ST.FeaturePlot(object = so, 
+               features = "seurat_clusters", 
+               pt.size = 1, 
+               ncol = 2,
+               show.sb = FALSE,
+               label.by = "sample_id")
+```
+
+#### 6.1.2.1 control1
+
+```{r}
+# grab cluster color assignments from previous plot for consistency
+cluster_colors <- c("#FFC312", "#C4E538", "#12CBC4", "#FDA7DF", "#ED4C67", "#F79F1F", "#A3CB38", "#1289A7", "#D980FA", "#B53471", "#EE5A24", "#009432", "#0652DD", "#9980FA", "#833471", "#EA2027", "#006266", "#1B1464", "#c9cece")
+names(cluster_colors) <- c("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "-")
+```
+
+```{r, fig.height = 3, fig.width = 3}
+ST.FeaturePlot(object = so, 
+               features = "seurat_clusters",
+               pt.size = 1, 
+               split.labels = T, 
+               indices = 1, 
+               show.sb = FALSE, 
+               ncol = 5,
+               cols = cluster_colors)
+```
+
+#### 6.1.2.2 control2
+
+```{r, fig.height = 3, fig.width = 3}
+ST.FeaturePlot(object = so, 
+               features = "seurat_clusters",
+               pt.size = 1, 
+               split.labels = T, 
+               indices = 2, 
+               show.sb = FALSE, 
+               ncol = 5,
+               cols = cluster_colors)
+```
+
+#### 6.1.2.3 mutant1
+
+```{r, fig.height = 3, fig.width = 3}
+ST.FeaturePlot(object = so, 
+               features = "seurat_clusters",
+               pt.size = 1, 
+               split.labels = T, 
+               indices = 3, 
+               show.sb = FALSE, 
+               ncol = 5,
+               cols = cluster_colors)
+```
+
+#### 6.1.2.4 mutant2
+
+```{r, fig.height = 3, fig.width = 3}
+ST.FeaturePlot(object = so, 
+               features = "seurat_clusters",
+               pt.size = 1, 
+               split.labels = T, 
+               indices = 4, 
+               show.sb = FALSE, 
+               ncol = 5,
+               cols = cluster_colors)
+```
+
+## 6.2 Dimensional reduction
+
+### 6.2.1 Calculate the UMAP
+
+```{r}
+so <- RunUMAP(so, reduction = "pca", dims = 1:50)
+```
+
+### 6.2.2 Plot the UMAP
+
+#### 6.2.2.1 By sample and by cluster
+
+```{r}
+plot_umap_by_sample <- bind_cols(so@meta.data, as.data.frame(so@reductions$umap@cell.embeddings)) %>%
+  ggplot(aes(UMAP_1, UMAP_2, color = sample_id)) +
+  geom_point(size = 0.2) +
+  theme_bw() +
+  scale_color_manual(values = custom_colors$discrete) +
+  labs(color = 'Sample') +
+  guides(colour = guide_legend(override.aes = list(size = 2))) +
+  theme(legend.position = 'left') +
+  coord_fixed() +
+  annotate(
+    geom = 'text', x = Inf, y = -Inf,
+    label = paste0('n = ', format(nrow(so@meta.data), big.mark = ',', trim = TRUE)),
+    vjust = -1.5, hjust = 1.25, color = 'black', size = 2.5
+  )
+plot_umap_by_cluster <- bind_cols(so@meta.data, as.data.frame(so@reductions$umap@cell.embeddings)) %>%
+  ggplot(aes(UMAP_1, UMAP_2, color = seurat_clusters)) +
+  geom_point(size = 0.2) +
+  theme_bw() +
+  scale_color_manual(values = custom_colors$discrete) +
+  labs(color = 'Cluster') +
+  guides(colour = guide_legend(override.aes = list(size = 2))) +
+  theme(legend.position = 'right') +
+  coord_fixed() +
+  annotate(
+    geom = 'text', x = Inf, y = -Inf,
+    label = paste0('n = ', format(nrow(so@meta.data), big.mark = ',', trim = TRUE)),
+    vjust = -1.5, hjust = 1.25, color = 'black', size = 2.5
+  )
+
+plot_umap_by_sample 
+ 
+```
+
+# 8 Save Data
+
+```{r}
+saveRDS(so, "/Users/christinacomo/OneDrive - The University of Colorado Denver/Spatial/RDS_files/so_all.rds")
+```
+
+
+
+
+
+
+

@@ -1,0 +1,190 @@
+---
+title: "E14 Spatial NICHES"
+author: "Christina Como"
+date: "`r Sys.Date()`"
+output: 
+  html_notebook:
+    toc: TRUE
+    toc_depth: 4
+    toc_float: TRUE
+    theme: united
+    highlight: tango
+---
+```{r}
+getwd ()
+setwd("/Users/christinacomo/Desktop/Spatial")
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, error = FALSE) 
+```
+
+# 1 Preparation
+
+Here, we prepare our notebook for analysis. This includes loading relevant libraries, defining custom color palettes (optional), and defining any custom helper functions (not needed in this notebook).
+
+##1.1 Install packages
+```{r}
+install.packages("remotes")
+remotes::install_github("satijalab/seurat-wrappers")
+remotes::install_github("msraredon/NICHES")
+install.packages("viridis")
+```
+
+
+## 1.2 Load R packages
+
+```{r}
+library(remotes)
+library(Seurat)
+library(SeuratData)
+library(ggplot2)
+library(cowplot)
+library(patchwork)
+library(dplyr)
+library(SeuratWrappers)
+library(NICHES)
+library(viridis)
+```
+
+```{r}
+custom_colors <- list()
+colors_dutch <- c(
+  '#FFC312','#C4E538','#12CBC4','#FDA7DF','#ED4C67',
+  '#F79F1F','#A3CB38','#1289A7','#D980FA','#B53471',
+  '#EE5A24','#009432','#0652DD','#9980FA','#833471',
+  '#EA2027','#006266','#1B1464','#5758BB','#6F1E51'
+)
+colors_spanish <- c(
+  '#40407a','#706fd3','#f7f1e3','#34ace0','#33d9b2',
+  '#2c2c54','#474787','#aaa69d','#227093','#218c74',
+  '#ff5252','#ff793f','#d1ccc0','#ffb142','#ffda79',
+  '#b33939','#cd6133','#84817a','#cc8e35','#ccae62'
+)
+custom_colors$discrete <- c(colors_dutch, colors_spanish)
+custom_colors$cell_cycle <- setNames(
+  c('#45aaf2', '#f1c40f', '#e74c3c', '#7f8c8d'),
+  c('G1',      'S',       'G2M',     '-')
+)
+```
+
+```{r}
+SampleA <- readRDS("/Users/christinacomo/Desktop/Spatial/RDS_files/SampleA_spatial.rds")
+SampleB <- readRDS("/Users/christinacomo/Desktop/Spatial/RDS_files/SampleB_spatial.rds")
+SampleC <- readRDS("/Users/christinacomo/Desktop/Spatial/RDS_files/SampleC_spatial.rds")
+SampleD <- readRDS("/Users/christinacomo/Desktop/Spatial/RDS_files/SampleD_spatial.rds")
+```
+
+
+## Load Data, Normalize, Visualize
+```{r}
+#Now subset with  spots
+meninges1 <- read.csv("/Users/christinacomo/Desktop/Spatial/data/control1/control1_meninges.csv")
+mge1 <- read.csv("/Users/christinacomo/Desktop/Spatial/data/control1/mge.csv")
+lge1 <- read.csv("/Users/christinacomo/Desktop/Spatial/data/control1/lge.csv")
+midline1 <- read.csv("/Users/christinacomo/Desktop/Spatial/data/control1/midline.csv")
+medial_cortex1 <- read.csv("/Users/christinacomo/Desktop/Spatial/data/control1/medial_cortex.csv")
+lateral_cortex1 <- read.csv("/Users/christinacomo/Desktop/Spatial/data/control1/lateral_cortex.csv")
+```
+
+
+```{r}
+names(mge1) <- c("barcodes", "region")
+names(lge1) <- c("barcodes", "region")
+names(midline1) <- c("barcodes", "region")
+names(lateral_cortex1) <- c("barcodes", "region")
+names(medial_cortex1) <- c("barcodes", "region")
+names(meninges1) <- c("barcodes", "region")
+```
+
+
+```{r}
+control_1_regions_of_interest <- rbind(mge1, lge1, midline1, lateral_cortex1, medial_cortex1, meninges1) 
+```
+
+#Control 2
+```{r}
+#Now subset with  spots
+meninges2 <- read.csv("/Users/christinacomo/Desktop/Spatial/data/control2/Dorsal Meninges.csv")
+mge2 <- read.csv("/Users/christinacomo/Desktop/Spatial/data/control2/mge.csv")
+lge2 <- read.csv("/Users/christinacomo/Desktop/Spatial/data/control2/lge.csv")
+midline2 <- read.csv("/Users/christinacomo/Desktop/Spatial/data/control2/midline.csv")
+medial_cortex2 <- read.csv("/Users/christinacomo/Desktop/Spatial/data/control2/medial_cortex.csv")
+lateral_cortex2 <- read.csv("/Users/christinacomo/Desktop/Spatial/data/control2/lateral_cortex.csv")
+```
+
+
+```{r}
+names(mge2) <- c("barcodes", "region")
+names(lge2) <- c("barcodes", "region")
+names(midline2) <- c("barcodes", "region")
+names(lateral_cortex2) <- c("barcodes", "region")
+names(medial_cortex2) <- c("barcodes", "region")
+names(meninges2) <- c("barcodes", "region")
+```
+
+
+```{r}
+control_2_regions_of_interest <- rbind(mge2, lge2, midline2, lateral_cortex2, medial_cortex2, meninges2) 
+```
+
+
+```{r}
+# grab the spot barcodes to use for subsetting
+spots.use1 <- control_1_regions_of_interest$barcodes
+control_1_regions_of_interest <- control_1_regions_of_interest %>% column_to_rownames(var = "barcodes")
+
+# grab the spot barcodes to use for subsetting
+spots.use2 <- control_2_regions_of_interest$barcodes
+control_2_regions_of_interest <- control_2_regions_of_interest %>% column_to_rownames(var = "barcodes")
+```
+
+```{r}
+# check dimensions of regions_of_interest and make sure it is the sum of cc_cortex and cc_meninges
+dim(control_2_regions_of_interest)
+dim(control_1_regions_of_interest)
+
+```
+
+```{r}
+# now, subset the seurat object
+subsetA <- subset(SampleA, cells = spots.use1)
+subsetB <- subset(SampleB, cells = spots.use2)
+```
+
+```{r}
+SpatialDimPlot(subsetA)
+```
+```{r}
+subsetA <- SCTransform(subsetA, assay = "Spatial", verbose = FALSE)
+# Dimensional reduction with all cells
+subsetA <- RunPCA(subsetA, assay = "SCT", verbose = FALSE)
+subsetA <- FindNeighbors(subsetA, reduction = "pca", dims = 1:30)
+subsetA <- FindClusters(subsetA, verbose = FALSE)
+subsetA <- RunUMAP(subsetA, reduction = "pca", dims = 1:30)
+p1 <- DimPlot(subsetA, reduction = "umap",group.by = 'seurat_clusters', label = TRUE)
+p2 <- SpatialDimPlot(subsetA, label = TRUE,group.by = 'seurat_clusters', label.size = 3)
+p1 + p2
+```
+
+```{r}
+SpatialDimPlot(subsetB)
+```
+```{r}
+subsetB <- SCTransform(subsetB, assay = "Spatial", verbose = FALSE)
+# Dimensional reduction with all cells
+subsetB <- RunPCA(subsetB, assay = "SCT", verbose = FALSE)
+subsetB <- FindNeighbors(subsetB, reduction = "pca", dims = 1:30)
+subsetB <- FindClusters(subsetB, verbose = FALSE)
+subsetB <- RunUMAP(subsetB, reduction = "pca", dims = 1:30)
+p1 <- DimPlot(subsetB, reduction = "umap",group.by = 'seurat_clusters', label = TRUE)
+p2 <- SpatialDimPlot(subsetB, label = TRUE,group.by = 'seurat_clusters', label.size = 3)
+p1 + p2
+```
+```{r}
+subsetB@meta.data$x <- subsetB@images$seurat_clusters@coordinates$row
+subsetB@meta.data$y <- subsetB@images$seurat_clusters@coordinates$col
+
+```
+

@@ -1,0 +1,231 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+library(Seurat)
+library(SeuratData)
+library(ggplot2)
+library(patchwork)
+library(dplyr)
+library(hdf5r)
+library(sctransform)
+library(ggsci)
+library(cowplot)
+library(uwot)
+library(biomaRt)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+```{r}
+setwd("/Users/christinacomo/Desktop/Spatial")
+getwd()
+```
+
+```{r}
+
+SampleA <- readRDS('/Users/christinacomo/Desktop/Spatial/RDS_files/SampleA_subsetwithbarcodes.RDS')
+SampleB <- readRDS('/Users/christinacomo/Desktop/Spatial/RDS_files/SampleB_subsetwithbarcodes.RDS')
+SampleC <- readRDS('/Users/christinacomo/Desktop/Spatial/RDS_files/SampleC_subsetwithbarcodes.RDS')
+SampleD <- readRDS('/Users/christinacomo/Desktop/Spatial/RDS_files/SampleD_subsetwithbarcodes.RDS')
+```
+
+```{r}
+samples.control <- merge(SampleA,SampleB)
+samples.mutant <- merge(SampleC,SampleD)
+
+samples.control$treatment <- "control"
+samples.mutant$treatment <- "mutant"
+```
+
+```{r}
+samples.merge <- merge(samples.control,samples.mutant)
+```
+
+```{r}
+saveRDS(samples.merge, "samples_merged_regionsofbrain")
+samples.merge <- readRDS("samples_merged_regionsofbrain")
+```
+
+```{r}
+VlnPlot(samples.merge, 
+        features = c("nFeature_Spatial", "nCount_Spatial", "percent_mito"), 
+        ncol = 3,
+        group.by = "orig.ident")
+```
+
+```{r}
+VlnPlot(samples.merge, 
+        features = c("nFeature_Spatial", "nCount_Spatial", "percent_mito"), 
+        ncol = 3,
+        group.by = "treatment")
+```
+```{r}
+so <- SCTransform(samples.merge, assay = "Spatial")
+```
+```{r}
+so <- RunPCA(so, assay = "SCT", verbose = FALSE)
+so <- FindNeighbors(so, reduction = "pca", dims = 1:30, verbose = FALSE)
+so <- FindClusters(so, verbose = FALSE)
+so <- RunUMAP(so, reduction = "pca", dims = 1:30)
+```
+```{r}
+DimPlot(so, reduction = "umap", label = TRUE)
+```
+```{r}
+SpatialDimPlot(so)
+```
+```{r}
+SpatialFeaturePlot(so, features = "Bmpr1a")
+```
+```{r}
+SpatialFeaturePlot(so, features = "Smad4")
+VlnPlot(so, features = 'Smad4', split.by = 'treatment')
+```
+
+
+```{r}
+DimPlot(so, reduction = "umap", group.by = "treatment")
+```
+
+```{r}
+DimPlot(so, reduction = "umap", split.by = 'treatment', group.by = "region")
+```
+```{r}
+convertHumanGeneList <- function(x) {
+  require("biomaRt")
+  human = useMart("ensembl", dataset = "hsapiens_gene_ensembl",host = "useast.ensembl.org")
+  mouse = useMart("ensembl", dataset = "mmusculus_gene_ensembl",host = "useast.ensembl.org")
+  
+  genesV2 = getLDS(
+    attributes = c("hgnc_symbol"),
+    filters = "hgnc_symbol",
+    values = x ,
+    mart = human,
+    attributesL = c("mgi_symbol"),
+    martL = mouse,
+    uniqueRows = T
+  )
+  
+  return(genesV2)
+}
+```
+
+
+```{r}
+s.genes <- convertHumanGeneList(cc.genes.updated.2019$s.genes)$MGI.symbol
+g2m.genes <- convertHumanGeneList(cc.genes.updated.2019$g2m.genes)$MGI.symbol
+so <- CellCycleScoring(object = so,
+                       s.features = s.genes,
+                       g2m.features = g2m.genes)
+```
+
+```{r, fig.height = 3}
+RidgePlot(object = so,
+          features = c("Pcna", "Top2a", "Mcm6", "Mki67"),
+          ncol = 2)
+```
+
+```{r}
+DimPlot(so, reduction = "umap", group.by = "Phase")
+```
+
+```{r}
+# Run the standard workflow for visualization and clustering
+samples.merge.CCG <- ScaleData(so, vars.to.regress = c("S.Score", "G2M.Score"), verbose = FALSE, assay = "SCT")
+samples.merge.CCG <- RunPCA(samples.merge.CCG, npcs = 30, verbose = FALSE, assay = "SCT")
+samples.merge.CCG <- RunUMAP(samples.merge.CCG, reduction = "pca", dims = 1:30, assay = "SCT")
+samples.merge.CCG <- FindNeighbors(samples.merge.CCG, reduction = "pca", dims = 1:30, assay = "SCT")
+samples.merge.CCG <- FindClusters(samples.merge.CCG, resolution = 0.5)
+```
+
+```{r}
+DimPlot(samples.merge.CCG, reduction = "umap")
+```
+
+
+```{r}
+DimPlot(samples.merge.CCG, reduction = "umap", split.by = "treatment")
+```
+
+
+
+```{r}
+DimPlot(samples.merge.CCG, reduction = "umap", split.by = "Phase")
+```
+```{r}
+DimPlot(samples.merge.CCG, reduction = "umap", group.by =  "region")
+
+```
+
+```{r}
+SpatialDimPlot(samples.merge.CCG)
+```
+
+
+```{r}
+#ANNOTATE
+AP_markers <- c("Pax6", "Sox2", "Hes5")
+IP_markers <- c("Eomes", "Neurog2")
+migrating_markers <- c("Neurod6", "Neurod2", "Nrp1")
+Interneurons_markers <- c("Dlx2", "Gad1")
+#0 - APs/IPs, 
+#1 - Interneuron progenitors, mutant only 
+#2 - control only APs/IPs low, immature neurons 
+#3 - migrating neurons 
+#4 - mutant septum APs/IPs low
+```
+
+```{r}
+VlnPlot(samples.merge.CCG, AP_markers)
+```
+
+```{r}
+VlnPlot(samples.merge.CCG, IP_markers)
+
+```
+
+```{r}
+VlnPlot(samples.merge.CCG, migrating_markers)
+
+```
+
+
+```{r}
+VlnPlot(samples.merge.CCG, Interneurons_markers)
+```
+
+```{r}
+#0 - APs/IPs, 
+#1 - Interneuron progenitors, mutant only 
+#2 - control only APs/IPs low, immature neurons 
+#3 - no APS/IPS, Eomes high, migrating neurons 
+#4 - mutant septum APs/IPs low
+
+```
+
+```{r}
+DimPlot(samples.merge.CCG, split.by = "treatment", group.by = 'region')
+```
+
+```{r}
+renamed <- RenameIdents(samples.merge.CCG, '0' = 'Progenitors', '1' = 'Interneuron Progenitors', '2' = 'Immature Neurons', '3' = 'Migrating Neurons', '4' = 'Mutant Progenitors')
+```
+
+```{r}
+DimPlot(renamed, label = TRUE)
+```
+```{r}
+DimPlot(renamed, split.by = 'treatment')
+```
+
+# What do you notice between the control and mutant plots? 
+
+
